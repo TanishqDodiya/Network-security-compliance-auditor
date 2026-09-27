@@ -45,7 +45,7 @@ export default function Settings() {
         <SectionTitle>Backend connection</SectionTitle>
         <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-1.5 text-sm mb-3">
           <dt className="text-slate-500">Backend URL</dt>
-          <dd className="mono text-slate-900 break-all">{API_BASE}</dd>
+          <dd className="mono text-slate-900 break-all">{API_BASE || "(same origin — /api on this domain)"}</dd>
           <dt className="text-slate-500">Configuration</dt>
           <dd className="text-slate-600">
             Override with <code className="text-xs">VITE_API_URL</code> in <code className="text-xs">frontend/.env</code>.

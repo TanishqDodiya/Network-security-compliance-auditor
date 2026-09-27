@@ -223,3 +223,22 @@ diffing, scheduled re-audits, more LLM providers.
 - AI suggestions need human confirmation; fallback is keyword-based.
 - SQLite + `create_all`, no auth on APIs (hackathon MVP).
 - No frontend unit tests (build + smoke tested).
+
+## Deploy (frontend + backend, same domain)
+
+`deploy.json` routes `/api/*` to the backend service and everything else to
+the frontend (Vite build output). The frontend uses same-origin relative
+`/api` calls by default, so no `VITE_API_URL` is needed in production.
+
+Backend service:
+
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+- Tables are created and demo rules auto-seeded on first boot (re-runs are no-ops).
+- `/api/health` works as a platform healthcheck.
+- Set `CORS_ORIGINS` only if the frontend is served from another domain.
+- SQLite stores data on local disk: attach a persistent volume or data resets
+  on redeploy. Use Postgres + `DATABASE_URL` for anything beyond the hackathon.

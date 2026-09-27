@@ -4,13 +4,41 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import routers
-from app.database.session import init_db
+from app.database.session import SessionLocal, init_db
+import os
+
+
+def cors_origins() -> list[str]:
+    """Local dev defaults + extra origins from CORS_ORIGINS env (comma-separated).
+
+    Same-origin production deploys (frontend + /api on one domain) need no
+    CORS entry; set CORS_ORIGINS only if the frontend lives on another domain.
+    """
+    origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+    extra = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+    return origins + [o for o in extra if o not in origins]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create SQLite tables on startup (safe: never deletes data).
     init_db()
+    # Auto-seed demo rules on fresh databases so deploys work with no extra step.
+    try:
+        from app.compliance.seed import ensure_demo_rules
+
+        db = SessionLocal()
+        try:
+            created, total = ensure_demo_rules(db)
+            if created:
+                print(f"Auto-seeded {created} demo rules (total {total}).")
+        finally:
+            db.close()
+    except Exception as exc:  # audits fall back to built-in rules, so never block boot
+        print(f"Warning: rule auto-seed skipped ({exc}).")
     yield
 
 
@@ -21,11 +49,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Basic CORS so the future React frontend can call the backend during development.
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# Basic CORS for local development; extend via CORS_ORIGINS env in production.
+origins = cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +68,13 @@ def read_root():
 
 @app.get("/health")
 def health_check():
+    return {"status": "healthy"}
+
+
+@app.get("/api/health")
+def api_health_check():
+    # Same payload under /api/* so it works behind rewrites/proxies
+    # that only forward /api to the backend, and as a platform healthcheck.
     return {"status": "healthy"}
 
 

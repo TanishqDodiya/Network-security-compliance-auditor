@@ -1,6 +1,7 @@
-// Central API client. Backend URL configurable via VITE_API_URL.
-// Beginner note: all backend calls go through here, so pages stay clean.
-export const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+// Central API client. Same-origin by default (works behind /api rewrites
+// in production); set VITE_API_URL for local dev against :8000 directly
+// (vite.config.js also proxies /api to the backend during npm run dev).
+export const API_BASE = import.meta.env.VITE_API_URL || "";
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, options);
@@ -19,7 +20,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  health: () => request("/health"),
+  health: () => request("/api/health"),
   devices: () => request("/api/devices"),
   device: (id) => request(`/api/devices/${id}`),
   createDevice: (payload) =>
