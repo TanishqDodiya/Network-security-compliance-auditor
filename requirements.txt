@@ -1,3 +1,14 @@
 # Root requirements for the Vercel Python runtime (serverless /api function).
-# Single source of truth lives in backend/requirements.txt.
--r backend/requirements.txt
+# NOTE: Vercel's requirements parser does not support `-r` includes, so the
+# dependency list is inlined here. Keep in sync with backend/requirements.txt.
+# Production dependencies (PostgreSQL only — no SQLite driver).
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-multipart
+python-dotenv
+httpx
+fpdf2
+psycopg[binary]
+pytest
