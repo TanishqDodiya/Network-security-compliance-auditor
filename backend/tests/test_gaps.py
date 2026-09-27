@@ -5,32 +5,18 @@ Run from backend/ (venv activated):
 """
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import inspect
+
+from db_helper import override_get_db, reset_test_schema
 
 from app.compliance import DEMO_RULES
-from app.database.session import Base, get_db
+from app.database.session import get_db
 from app.main import app
 from app.models.compliance_rule import ComplianceRule
 from app.normalization import NormalizedConfig
 
-engine = create_engine(
-    "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
-)
-TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-
-def override_get_db():
-    db = TestingSession()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 app.dependency_overrides[get_db] = override_get_db
-Base.metadata.create_all(bind=engine)
+reset_test_schema()
 client = TestClient(app)
 
 

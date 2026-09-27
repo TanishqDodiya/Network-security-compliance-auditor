@@ -43,9 +43,9 @@ No `if vendor == ...` inside compliance rules.
 
 - Frontend: React 19, Vite, JavaScript, Tailwind CSS v4, Recharts, react-router-dom
 - Backend: Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, Pydantic, python-multipart, python-dotenv, fpdf2, httpx
-- Database: SQLite (`auditor.db`), SQLAlchemy ORM, no migrations for MVP (`create_all`)
+- Database: PostgreSQL only (SQLAlchemy ORM, `psycopg` driver, no migrations for MVP (`create_all`))
 - AI: `AI_PROVIDER`/`AI_API_KEY` env config, OpenAI-compatible call with deterministic fallback
-- Tests: pytest (42 tests), live rehearsal script pattern
+- Tests: pytest (45 tests), live rehearsal script pattern
 
 ## Project Structure
 
@@ -70,8 +70,7 @@ network-security-auditor/
 │   │   ├── reports/ (fpdf2 generator)
 │   │   └── database/ (engine, SessionLocal, Base, get_db, init_db)
 │   ├── tests/ (12 test files, 42 tests)
-│   ├── init_db.py, seed_rules.py, requirements.txt
-│   └── auditor.db (created locally, gitignored)
+│   ├── init_db.py, seed_rules.py, requirements.txt, tests/ (PostgreSQL via DATABASE_URL_TEST)
 ├── sample_configs/cisco|juniper|paloalto/ (compliant + non-compliant each)
 ├── rules/ (reserved for future rule files; rules currently in app/compliance/rules_data.py + DB)
 ├── docs/DEMO.md (hackathon demo script)
@@ -81,7 +80,7 @@ network-security-auditor/
 
 ## Installation
 
-Prerequisites: Python 3.10+, Node 18+, Git.
+Prerequisites: Python 3.10+, Node 18+, Git, PostgreSQL 14+.
 
 Backend (Windows PowerShell; macOS/Linux uses `source venv/bin/activate`):
 
@@ -90,6 +89,7 @@ cd network-security-auditor\backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item ..\.env.example ..\.env   # then edit DATABASE_URL with real values
 python init_db.py
 python seed_rules.py
 ```
@@ -111,11 +111,59 @@ cp .env.example .env   # PowerShell: Copy-Item .env.example .env
 |---|---|---|
 | `APP_NAME` | Display name | auditor title |
 | `APP_ENV` | `development` / `production` | `development` |
-| `DATABASE_URL` | SQLAlchemy URL | `sqlite:///./auditor.db` |
+| `DATABASE_URL` | PostgreSQL URL (required, no fallback) | `postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` |
+| `DATABASE_URL_TEST` | PostgreSQL test DB (isolated from dev) | `postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE_TEST` |
 | `AI_PROVIDER` | `none` or `openai` | `none` (fallback mode) |
 | `AI_API_KEY` | LLM key, **never commit** | empty |
 | `AI_MODEL` | OpenAI model | `gpt-4o-mini` |
-| `VITE_API_URL` | Backend URL for frontend (`frontend/.env`) | `http://127.0.0.1:8000` |
+| `VITE_API_URL` | Frontend API base (`frontend/.env`) | `/api` (same-origin) |
+
+## PostgreSQL Setup
+
+Local development also uses PostgreSQL (no SQLite anywhere):
+
+```powershell
+# 1. Install PostgreSQL 14+ and create the databases:
+psql -U postgres -c "CREATE DATABASE network_security_auditor;"
+psql -U postgres -c "CREATE DATABASE network_security_auditor_test;"
+
+# 2. Set DATABASE_URL in .env (project root), e.g.:
+# DATABASE_URL=postgresql+psycopg://postgres:PASSWORD@localhost:5432/network_security_auditor
+# DATABASE_URL_TEST=postgresql+psycopg://postgres:PASSWORD@localhost:5432/network_security_auditor_test
+
+# 3. Create tables + seed demo rules, then start the backend:
+cd network-security-auditor\backend
+.\venv\Scripts\Activate.ps1
+python init_db.py
+python seed_rules.py
+uvicorn app.main:app --reload
+
+# 4. Start the frontend (new terminal):
+cd network-security-auditor\frontend
+npm install
+npm run dev     # http://localhost:5173/dashboard (proxies /api to :8000)
+```
+
+Tests use ONLY the test database (`DATABASE_URL_TEST`), never the dev DB:
+
+```bash
+cd network-security-auditor/backend
+$env:DATABASE_URL_TEST="postgresql+psycopg://postgres:PASSWORD@localhost:5432/network_security_auditor_test"
+python -m pytest tests/ -v
+```
+
+## Vercel Deployment
+
+1. Connect the repository to Vercel (project root = `network-security-auditor/`).
+2. Vercel builds the frontend (`frontend/dist`) and serves the backend from
+   `api/index.py` per `vercel.json` (`/api/*` → FastAPI, `/*` → SPA).
+3. Provision a managed PostgreSQL database (e.g. Vercel Postgres, Neon,
+   Supabase, RDS) and copy its connection string.
+4. Add environment variables in the Vercel dashboard (never commit secrets):
+   `APP_NAME`, `APP_ENV=production`, `DATABASE_URL`, `AI_PROVIDER`,
+   `AI_API_KEY`, `AI_MODEL`, `VITE_API_URL=/api`.
+5. Deploy, then verify: `GET /api/health` → `{"status": "healthy"}`,
+   `/dashboard` loads, and refreshing `/dashboard` does not 404.
 
 ## How to Run Backend
 
@@ -127,7 +175,7 @@ uvicorn app.main:app --reload
 
 - API: http://127.0.0.1:8000/ · Health: `/health`
 - Swagger: http://127.0.0.1:8000/docs · ReDoc: `/redoc`
-- Tests: `python -m pytest tests/ -v` (42 passed)
+- Tests: `python -m pytest tests/ -v` (45 passed, PostgreSQL test DB)
 
 ## How to Run Frontend
 
@@ -213,7 +261,7 @@ validated all-pass on a clean DB.
 ## Future Scope
 
 More vendors (one parser adapter each), rule packs (real CIS mappings),
-auth/RBAC, Alembic migrations, Postgres, background audit jobs, config
+auth/RBAC, Alembic migrations, background audit jobs, config
 diffing, scheduled re-audits, more LLM providers.
 
 ## Limitations
@@ -221,16 +269,20 @@ diffing, scheduled re-audits, more LLM providers.
 - Demo rules are internally created, not verified CIS/NIST controls.
 - Parsers cover security-relevant subsets, not full vendor CLIs.
 - AI suggestions need human confirmation; fallback is keyword-based.
-- SQLite + `create_all`, no auth on APIs (hackathon MVP).
+- PostgreSQL + `create_all`, no auth on APIs (hackathon MVP).
 - No frontend unit tests (build + smoke tested).
 
 ## Deploy (frontend + backend, same domain)
 
-`deploy.json` routes `/api/*` to the backend service and everything else to
-the frontend (Vite build output). The frontend uses same-origin relative
-`/api` calls by default, so no `VITE_API_URL` is needed in production.
+`vercel.json` routes `/api/*` to the FastAPI serverless function
+(`api/index.py`, which re-exports `backend/app/main.py:app`) and everything
+else to the frontend (Vite build output, with SPA fallback to `/index.html`
+so refreshes on `/dashboard` etc. never 404). The frontend uses same-origin
+`/api` calls by default, so production needs `VITE_API_URL=/api` (or unset).
+(`deploy.json` describes the same `/api/*` → backend / `/*` → frontend split
+for generic multi-service hosts.)
 
-Backend service:
+Backend service (any host):
 
 ```bash
 pip install -r requirements.txt
@@ -240,5 +292,5 @@ uvicorn app.main:app --host 0.0.0.0 --port $PORT
 - Tables are created and demo rules auto-seeded on first boot (re-runs are no-ops).
 - `/api/health` works as a platform healthcheck.
 - Set `CORS_ORIGINS` only if the frontend is served from another domain.
-- SQLite stores data on local disk: attach a persistent volume or data resets
-  on redeploy. Use Postgres + `DATABASE_URL` for anything beyond the hackathon.
+- PostgreSQL is required (`DATABASE_URL`); the app fails fast with a clear
+  error if it is missing. Never point production at a dev/test database.

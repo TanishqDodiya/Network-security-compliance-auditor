@@ -1,10 +1,27 @@
 // Central API client. Same-origin by default (works behind /api rewrites
-// in production); set VITE_API_URL for local dev against :8000 directly
-// (vite.config.js also proxies /api to the backend during npm run dev).
-export const API_BASE = import.meta.env.VITE_API_URL || "";
+// in production and the Vite dev proxy during npm run dev).
+// VITE_API_URL may be "", "/api" (same-origin), or an absolute backend URL
+// for split-domain local dev (e.g. http://127.0.0.1:8000). The "/api" prefix
+// is never duplicated.
+const RAW_BASE = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+export const API_BASE = RAW_BASE === "/" ? "" : RAW_BASE;
+
+function joinBase(path) {
+  if (API_BASE.endsWith("/api") && path.startsWith("/api")) {
+    return `${API_BASE}${path.slice(4)}`;
+  }
+  return `${API_BASE}${path}`;
+}
+
+// Central URL builder for non-JSON requests (e.g. PDF blob downloads).
+// Uses the same dedup logic as request() so VITE_API_URL="" and
+// VITE_API_URL="/api" both produce a single "/api/..." prefix.
+export function apiUrl(path) {
+  return joinBase(path);
+}
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, options);
+  const res = await fetch(joinBase(path), options);
   const text = await res.text();
   let data = null;
   try {

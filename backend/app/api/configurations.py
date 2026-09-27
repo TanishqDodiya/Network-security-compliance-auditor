@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/configurations", tags=["configurations"])
 
 ALLOWED_EXTENSIONS = {".txt", ".conf", ".cfg"}
 MAX_FILE_SIZE = 2 * 1024 * 1024  # 2 MB
-MAX_LINES = 20000  # Prevents giant files from bloating the SQLite DB.
+MAX_LINES = 20000  # Prevents giant files from bloating the PostgreSQL DB.
 
 
 def sanitize_filename(filename: str) -> str:

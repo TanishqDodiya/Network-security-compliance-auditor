@@ -1,13 +1,24 @@
-"""Database connection for the MVP.
+"""Database connection (PostgreSQL only).
 
-Simple idea:
-- SQLite = a database stored in a single file (auditor.db). No server to install.
-- SQLAlchemy = a Python library that lets us talk to the database using Python classes.
-- Engine = the connection to the database file.
+PostgreSQL is the ONLY supported database. There is intentionally NO
+SQLite support, NO local .db file, and NO silent fallback: if
+``DATABASE_URL`` is missing or points at anything other than PostgreSQL,
+the application fails fast with a clear error instead of running
+against the wrong database.
+
+Connection string (examples)::
+
+    DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE
+    DATABASE_URL_TEST=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE_TEST
+
+``postgres://`` / ``postgresql://`` scheme variants are normalized to the
+``postgresql+psycopg://`` driver form automatically.
+
+- Engine = the connection pool to PostgreSQL.
 - SessionLocal = a helper that opens a short conversation with the database.
 - Base = the parent class all our table models inherit from.
-- get_db() = used later by FastAPI APIs to get a database session.
-- init_db() = creates all tables from models (like building empty registers).
+- get_db() = used by FastAPI APIs to get a database session (always closed).
+- init_db() = creates all tables from models (safe to run many times).
 """
 
 import os
@@ -16,6 +27,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
 
 # Load .env if present. We check backend/.env then project-root .env.
 # This never prints secrets, it only reads them.
@@ -24,12 +36,49 @@ _PROJECT_ROOT = _BACKEND_DIR.parent  # network-security-auditor/
 load_dotenv(_BACKEND_DIR / ".env")
 load_dotenv(_PROJECT_ROOT / ".env")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./auditor.db")
 
-# SQLite needs this extra flag when used with FastAPI (multiple threads).
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+def _normalize_postgres_url(url: str) -> str:
+    """Normalize scheme variants to the ``postgresql+psycopg://`` driver form."""
+    # Heroku/Render style.
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://") :]
+    # Bare ``postgresql://`` without an explicit driver.
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://") :]
+    return url
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args, future=True)
+
+def _require_postgres_url(env_var: str = "DATABASE_URL") -> str:
+    raw = (os.getenv(env_var) or "").strip()
+    if not raw:
+        raise RuntimeError(
+            f"{env_var} is required. Example: "
+            "DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE"
+        )
+    lowered = raw.lower()
+    if lowered.startswith("sqlite"):
+        raise RuntimeError(
+            f"{env_var} must be a PostgreSQL URL. SQLite is not supported "
+            "(no sqlite:// URLs, no .db files)."
+        )
+    url = _normalize_postgres_url(raw)
+    if not url.lower().startswith(("postgresql+psycopg://", "postgres://", "postgresql://")):
+        raise RuntimeError(
+            f"{env_var} must be a PostgreSQL URL "
+            "(postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE)."
+        )
+    return _normalize_postgres_url(url)
+
+
+DATABASE_URL = _require_postgres_url("DATABASE_URL")
+
+# Serverless (Vercel) functions must not hold pooled connections between
+# invocations: one connection per request, closed afterwards.
+_engine_kwargs: dict = {"pool_pre_ping": True, "future": True}
+if os.getenv("VERCEL"):
+    _engine_kwargs["poolclass"] = NullPool
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 Base = declarative_base()

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert, EmptyState, ErrorState, LoadingState, PageHeader } from "../components/ui.jsx";
 import { useFetch } from "../hooks/useFetch.js";
-import { api, API_BASE } from "../services/api.js";
+import { api, apiUrl } from "../services/api.js";
 import { formatDate, pct } from "../utils/format.js";
 
 export default function Reports() {
@@ -16,7 +16,7 @@ export default function Reports() {
     setDownloading(auditId);
     setMsg("");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${auditId}`);
+      const res = await fetch(apiUrl(`/api/reports/${auditId}`));
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || `Download failed (${res.status})`);

@@ -24,7 +24,7 @@ def cors_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create SQLite tables on startup (safe: never deletes data).
+    # Create PostgreSQL tables on startup (safe: never deletes data).
     init_db()
     # Auto-seed demo rules on fresh databases so deploys work with no extra step.
     try:

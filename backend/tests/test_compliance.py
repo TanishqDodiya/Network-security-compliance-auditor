@@ -3,31 +3,16 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+
+from db_helper import override_get_db, reset_test_schema
 
 from app.compliance import DEMO_RULES, compliance_percent, evaluate_all
-from app.database.session import Base, get_db
+from app.database.session import get_db
 from app.main import app
 from app.normalization import normalize_text
 
-engine = create_engine(
-    "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
-)
-TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-
-def override_get_db():
-    db = TestingSession()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 app.dependency_overrides[get_db] = override_get_db
-Base.metadata.create_all(bind=engine)
+reset_test_schema()
 client = TestClient(app)
 
 SAMPLES = Path(__file__).resolve().parents[2] / "sample_configs"

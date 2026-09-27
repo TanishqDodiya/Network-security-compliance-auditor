@@ -1,36 +1,23 @@
-"""Phase 3 test: REST APIs with an isolated in-memory database.
+"""Phase 3 test: REST APIs with an isolated PostgreSQL test database.
 
 Run from backend/ (venv activated):
+
     python -m pytest tests/test_api.py -v
+
+Requires DATABASE_URL_TEST (see tests/db_helper.py). Never touches the
+development database.
 """
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.database.session import Base, get_db
+from db_helper import override_get_db, reset_test_schema
+
+from app.database.session import get_db
 from app.main import app
 
-# One shared in-memory DB for the whole test (StaticPool keeps single connection).
-engine = create_engine(
-    "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
-)
-TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-
-def override_get_db():
-    db = TestingSession()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 app.dependency_overrides[get_db] = override_get_db
-Base.metadata.create_all(bind=engine)
+reset_test_schema()
 client = TestClient(app)
-
 
 def test_devices_crud():
     r = client.post("/api/devices", json={"name": "Cisco-Router-01", "vendor": "cisco"})
