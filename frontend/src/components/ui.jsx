@@ -64,13 +64,11 @@ export function Alert({ kind = "info", children }) {
   );
 }
 
-export function BackendUnreachable({ onRetry }) {
-  return (
-    <ErrorState
-      message="Backend is unreachable. Start it with uvicorn app.main:app --reload in backend/."
-      onRetry={onRetry}
-    />
-  );
+export function BackendUnreachable({ onRetry, detail }) {
+  const message = detail
+    ? `Backend is unreachable (${detail}). Start it with uvicorn app.main:app --reload in backend/.`
+    : "Backend is unreachable. Start it with uvicorn app.main:app --reload in backend/.";
+  return <ErrorState message={message} onRetry={onRetry} />;
 }
 
 export function UploadLink() {

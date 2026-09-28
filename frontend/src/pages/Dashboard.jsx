@@ -54,7 +54,7 @@ export default function Dashboard() {
 
   if (devices.loading || audits.loading) return <LoadingState text="Loading dashboard…" />;
   if (devices.error || audits.error)
-    return <BackendUnreachable onRetry={() => { devices.reload(); audits.reload(); }} />;
+    return <BackendUnreachable detail={devices.error || audits.error} onRetry={() => { devices.reload(); audits.reload(); }} />;
 
   const deviceList = devices.data || [];
   const auditList = audits.data || [];
